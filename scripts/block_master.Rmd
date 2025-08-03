@@ -1,0 +1,114 @@
+---
+title: "Master Script - Block Groups"
+author: "Kevin Okonkwo"
+date: "2025-03-06"
+output: html_document
+---
+
+## Packages and dependencies
+
+```{r Packages}
+
+packages <- c("tidycensus", "tidyverse", "tmap", "sf", "here", "MatchIt", 
+              "optmatch", "cobalt", "readr", "modelsummary", "broom", "hrbrthemes",
+              "extrafont", "ggthemes", "ggplot2", "ggpubr", "rmarkdown", "Matching")
+
+install.packages(setdiff(packages, rownames(installed.packages())), dependencies = TRUE)
+
+lapply(packages, library, character.only = TRUE)
+
+rm(packages)
+
+
+```
+
+## Paths
+
+```{r Paths}
+
+setwd(here())
+
+here()
+
+```
+
+## Data preparation and wrangling (pre-treatment period)
+
+```{r Data preparation (pre-treatment period)}
+
+render(here("scripts/block groups/block_preparation_pre-treatment.Rmd"))
+
+rm(list = ls()) # Aufräumen
+
+```
+
+## Propensity score matching (pre-treatment data)
+
+```{r Propensity score matching (pre-treatment data)}
+
+render(here("scripts/block groups/block_propensity_score_matching.Rmd"))
+
+rm(list = ls()) # Aufräumen
+
+```
+
+## Re-installing dplyr package
+
+```{r Re-installing dplyr package}
+
+install.packages("dplyr") ## Click "yes" to restart R session
+
+```
+
+## Paths
+
+```{r Paths}
+
+library(rmarkdown)
+library(here)
+
+setwd(here())
+
+here()
+
+```
+
+## Data preparation and wrangling (post-treatment period)
+
+```{r Data preparation (post-treatment period)}
+
+render(here("scripts/block groups/block_preparation_post-treatment.Rmd"))
+
+rm(list = ls()) # Aufräumen
+
+```
+
+## Summary statistics and exploratory data analysis
+
+```{r Summary statistics}
+
+render(here("scripts/block groups/block_summary_statistics.Rmd"))
+
+rm(list = ls()) # Aufräumen
+
+```
+
+## Difference-in-Differences regression models
+
+```{r Difference-in-Differences}
+
+render(here("scripts/block groups/block_did_regressions.Rmd"))
+
+rm(list = ls()) # Aufräumen
+
+```
+
+## Plotting treatment effects of analysis
+
+```{r Plotting treatment effects}
+
+render(here("scripts/block groups/block_did_plots.Rmd"))
+
+rm(list = ls()) # Aufräumen
+
+```

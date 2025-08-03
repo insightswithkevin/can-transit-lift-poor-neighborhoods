@@ -1,0 +1,165 @@
+---
+title: "Summary Statistics - Census Tracts"
+author: "Kevin Okonkwo"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r Libraries}
+
+library(tidycensus)
+library(tidyverse)
+library(tmap)
+library(sf)
+library(here)
+library(MatchIt)
+library(optmatch)
+library(cobalt)
+library(readr)
+library(modelsummary)
+library(broom)
+library(hrbrthemes)
+library(extrafont)
+library(ggthemes)
+library(ggplot2)
+library(ggpubr)
+
+here()
+```
+
+## Description of pre-treatment conditions for treated units and control units before matching
+
+```{r Description of pre-treatment conditions before matching}
+
+treated_units <- st_read(here("data/census tracts/outputs/treated_units.shp"))
+
+treated_units <- treated_units %>% 
+  mutate(treatment = 1)
+
+control_units <- st_read(here("data/census tracts/outputs/control_units.shp"))
+
+control_units <- control_units %>% 
+  mutate(treatment = 0)
+
+df <- rbind(treated_units, control_units)
+
+df <- df %>% 
+  mutate(treatment = ifelse(treatment == 1, "Treated units", "Control units"))
+
+
+datasummary((`Median Household Income` = mdhnc_t) +
+              (`Share of Low-Income Households` = lw_nc_h) +
+              (`Unemployment Rate` = unmply_) +
+              (`Percentage of Geographical High-Income Mobility` = hgh_nc_) +
+              (`Total Population` = totl_pp) +
+              (`Median Age` = medin_g) +
+              (`Median Contract Rent` = mdn_rnt) +
+              (`Distance to CBD` = dstnc__) ~
+              treatment * ((Mean = Mean) + (Std.Dev. = SD)),
+            data = df,
+            notes = 'N of control units = 757; N of treated units = 14; time period: 2009-2013',
+            align = "lrclr",
+            stars = TRUE)
+
+```
+
+## Description of pre-treatment conditions for treated units and control units after matching
+
+```{r Description of pre-treatment conditions after matching}
+
+matched_data_2013 <- st_read(here("data/census tracts/outputs/matched_data_2013.shp"))
+
+matched_data_2013 <- matched_data_2013 %>% 
+  mutate(treatment = ifelse(treatment == 1, "Treated units", "Control units"))
+
+
+datasummary((`Median Household Income` = mdhnc_t) +
+              (`Share of Low-Income Households` = lw_nc_h) +
+              (`Unemployment Rate` = unmply_) +
+              (`Percentage of Geographical High-Income Mobility` = hgh_nc_) +
+              (`Total Population` = totl_pp) +
+              (`Median Age` = medin_g) +
+              (`Median Contract Rent` = mdn_rnt) +
+              (`Distance to CBD` = dstnc__) ~
+              treatment * ((Mean = Mean) + (Std.Dev. = SD)),
+            data = matched_data_2013,
+            notes = 'N of control units = 14; N of treated units = 14; time period: 2009-2013',
+            align = "lrclr",
+            stars = TRUE)
+
+```
+
+## Distribution of outcome variables across control and treatment group (checking if distribution is skewed for regression models)
+
+```{r Exploratory data analysis}
+
+appended_df <- st_read(here("data/census tracts/outputs/appended_df.shp"))
+
+
+appended_df <- appended_df %>% 
+  select(GEOID, NAME, geometry, year, treatment = tretmnt, distance = distanc,
+         weights, subclass = subclss, medhinc_tract = mdhnc_t, medhinc_county = mdhnc_c,
+         medhinc_ratio_tract = mdhnc__, income_quintiles = incm_qn, high_inc_mobility = hgh_nc_,
+         high_education = hgh_dct, unemployment_rate = unmply_,
+         low_inc_hh = lw_nc_h, total_pop = totl_pp, median_age = medin_g, median_rent = mdn_rnt,
+         distance_centroid_cbd = dstnc__, after_2013 = af_2013)
+
+
+appended_df <- appended_df %>%
+  mutate(log_medhinc_tract = log(medhinc_tract)) %>% 
+  mutate(treatment = ifelse(treatment == 1, "Treated units", "Control units"))
+
+
+appended_df$year <- as.factor(appended_df$year)
+
+appended_df$treatment <- as.factor(appended_df$treatment)
+
+
+medhinc_dist_tract <- ggplot(appended_df, mapping = aes(x = medhinc_tract)) +
+  geom_histogram(color = "white", boundary = 0) +
+  facet_wrap(vars(treatment)) +
+  labs(subtitle = "Ebene der Census Tracts",
+       y = "Zahl der Beobachtungen",
+       x = "Medianhaushaltseinkommen") +
+  theme_fivethirtyeight() +
+  theme(axis.title = element_text(), text = element_text(family = "Rubik"))
+
+
+log_medhinc_dist_tract <- ggplot(appended_df, mapping = aes(x = log_medhinc_tract)) +
+  geom_histogram(color = "white", boundary = 0) +
+  facet_wrap(vars(treatment)) +
+  labs(subtitle = "Ebene der Census Tracts",
+       caption = "Quelle: U.S. Census Bureau",
+       y = "Zahl der Beobachtungen",
+       x = "Log. Medianhaushaltseinkommen") +
+  theme_fivethirtyeight() +
+  theme(axis.title = element_text(), text = element_text(family = "Rubik"))
+
+```
+
+## Visualization of group means with 95% confidence interval
+
+```{r Visualization of group means}
+
+mhinc_point <- ggplot(appended_df, aes(x = factor(treatment), y = log_medhinc_tract)) +
+  stat_summary(geom = "pointrange", size = 1, color = "red",
+               fun.data = "mean_se", fun.args = list(mult = 1.96)) +
+  facet_wrap(vars(after_2013)) +
+  labs(title = "Log. Median Household Income: 2013 to 2022", x = "Treatment", y = "Log. MHI") +
+  theme_fivethirtyeight() +
+  theme(axis.title = element_text(), text = element_text(family = "Rubik"))
+
+mhinc_point
+
+
+lowinc_point <- ggplot(appended_df, aes(x = factor(treatment), y = low_inc_hh)) +
+  stat_summary(geom = "pointrange", size = 1, color = "red",
+               fun.data = "mean_se", fun.args = list(mult = 1.96)) +
+  facet_wrap(vars(after_2013)) +
+  labs(title = "Percentage of Low-Income Households: 2013 to 2022", x = "Treatment", y = "Percentage of LIH") +
+  theme_fivethirtyeight() +
+  theme(axis.title = element_text(), text = element_text(family = "Rubik"))
+
+lowinc_point
+
+```

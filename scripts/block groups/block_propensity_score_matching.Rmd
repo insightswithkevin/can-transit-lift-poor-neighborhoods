@@ -1,0 +1,164 @@
+---
+title: "Propensity Score Matching - Block Groups"
+author: "Kevin Okonkwo"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Libraries
+
+```{r Libraries}
+
+library(tidycensus)
+library(tidyverse)
+library(tmap)
+library(sf)
+library(here)
+library(MatchIt)
+library(Matching)
+library(optmatch)
+library(cobalt)
+library(readr)
+library(modelsummary)
+library(broom)
+
+here()
+
+```
+
+## Loading of data frames of treated and control units 
+
+```{r Loading data frames}
+
+treated_units <- st_read(here("data/block groups/outputs/treated_units.shp"))
+
+treated_units <- treated_units %>% 
+  mutate(treatment = 1)
+
+control_units <- st_read(here("data/block groups/outputs/control_units.shp"))
+
+control_units <- control_units %>% 
+  mutate(treatment = 0)
+
+df <- rbind(treated_units, control_units)
+
+```
+
+## Matching process
+
+```{r Matching}
+
+# Nearest Neighbor
+
+modmatch_near <- matchit(treatment ~
+                        unmply_ +
+                        totl_pp +
+                        medin_g +
+                        mdn_rnt +
+                        dstnc__,
+                      data = df,
+                      distance = "glm",
+                      method = "nearest",
+                      m.order = "largest",
+                      replace = FALSE)
+
+modmatch_near
+
+summary(modmatch_near)
+
+
+# Optimal Pair Matching
+
+modmatch_optimal <- matchit(treatment ~
+                        unmply_ +
+                        totl_pp +
+                        medin_g +
+                        mdn_rnt +
+                        dstnc__,
+                      data = df,
+                      distance = "glm",
+                      method = "optimal",
+                      ratio = 1)
+
+modmatch_optimal
+
+summary(modmatch_optimal)
+
+
+# Optimal Full Matching
+
+modmatch_full <- matchit(treatment ~
+                        unmply_ +
+                        totl_pp +
+                        medin_g +
+                        mdn_rnt +
+                        dstnc__,
+                      data = df,
+                      distance = "glm",
+                      method = "full",
+                      estimand = "ATc")
+
+modmatch_full
+
+summary(modmatch_full)
+
+
+# Genetic Matching
+
+modmatch_genetic <- matchit(treatment ~ 
+                              unmply_ +
+                              totl_pp +
+                              medin_g +
+                              mdn_rnt +
+                              dstnc__, 
+                            data = df, 
+                            method = "genetic")
+summary(modmatch_genetic)
+
+```
+
+## Evaluating Balance of matching types through visualizing covariate balance
+
+```{r Covariate balance}
+
+love.plot(modmatch_genetic, stats = c("mean.diffs", "variance.ratios", "ks"),
+          weights = list(opt = modmatch_optimal, nn = modmatch_near),
+          drop.distance = TRUE, thresholds = c(m = 0.1, v = 2, ks = 0.1),
+          var.order = "unadjusted", binary = "std",
+          shapes = c("circle filled", "asterisk", "cross", "plus"), 
+          colors = c("red", "purple", "darkgreen", "blue"),
+          title = "",
+          var.names = c(
+            unmply_ = "Arbeitslosenquote",
+            totl_pp = "Gesamtpopulation",
+            medin_g = "Medianes Alter",
+            mdn_rnt = "Medianer Mietpreis",
+            dstnc__ = "Distanz zum CBD"),
+          sample.names = c("Original", "Genetic Matching", "Optimal Matching", "NN Matching"),
+          position = "bottom")
+
+
+plot(modmatch_near, type = "jitter", interactive = FALSE)
+
+plot(modmatch_optimal, type = "jitter", interactive = FALSE)
+
+plot(modmatch_full, type = "jitter", interactive = FALSE)
+
+plot(modmatch_genetic, type = "jitter", interactive = FALSE)
+
+```
+
+## Data frames for remaining observations after matching
+
+``` {r Data frames for matched data}
+
+matched_data_2013 <- match.data(modmatch_genetic)
+
+matched_data_2013 <- matched_data_2013 %>% 
+  mutate(year = 2013)
+
+matched_data_2013 <- st_as_sf(matched_data_2013, coords = c("geometry"), crs = 26945)
+
+st_write(matched_data_2013, here("data/block groups/outputs/matched_data_2013.shp"), delete_layer=TRUE)
+
+```

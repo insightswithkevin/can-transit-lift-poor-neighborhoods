@@ -1,0 +1,327 @@
+---
+title: "Pre-Treatment Data Wrangling - Census Tracts"
+author: "Kevin Okonkwo"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Libraries
+
+```{r Libraries}
+
+library(tidycensus)
+library(tidyverse)
+library(tmap)
+library(sf)
+library(here)
+library(MatchIt)
+library(optmatch)
+library(cobalt)
+library(readr)
+library(modelsummary)
+library(broom)
+
+here()
+
+```
+
+## Look at available American Community Survey (ACS) variables from 2013
+
+```{r Overview of variables}
+
+v13_detailed <- load_variables(year = 2013,
+                               dataset = "acs5") # detailed tables
+
+
+v13_detailed[grep(x = v13_detailed$name, "B19013"),
+             c("name", "label")] # median household income
+
+v13_detailed[grep(x = v13_detailed$name, "B01003"),
+             c("name", "label")] # total population
+
+print(v13_detailed[grep(x = v13_detailed$name, "B01002"),
+                   c("name", "label")], n = 35) # median age by sex
+
+print(v13_detailed[grep(x = v13_detailed$name, "B25058"),
+                   c("name", "label")], n = 35) # median contract rent
+
+v13_detailed[grep(x = v13_detailed$name, "B23025"),
+             c("name", "label")] # share of unemployed people
+
+print(v13_detailed[grep(x = v13_detailed$name, "B07010"),
+                   c("name", "label")], n = 150) # share of geographical higher-income mobility
+
+print(v13_detailed[grep(x = v13_detailed$name, "B15003"),
+                   c("name", "label")], n = 30) # share of people with higher education
+
+print(v13_detailed[grep(x = v13_detailed$name, "B19001"),
+                   c("name", "label")], n = 180) # share of lower-income households
+
+```
+
+## Download of ACS detailed variables from 2013 for Los Angeles County, CA Census Tracts (Pre-Treatment)
+
+```{r Variable download}
+
+la_acs_orig <- get_acs(geography = "tract", # level of geography requested
+                       state ="006", # can use state FIPS codes as well e.g. 48
+                       county = "037", # County FIPS codes are safer
+                       year = 2013,
+                       variables = c("B19013_001",
+                                     "B01003_001",
+                                     "B01002_001",
+                                     "B25058_001",
+                                     "B23025_003", "B23025_005",
+                                     "B07010_001", "B07010_009", "B07010_010", "B07010_011",
+                                     "B15003_001", "B15003_022", "B15003_023", "B15003_024", "B15003_025",
+                                     "B19001_001" , "B19001_002", "B19001_003", "B19001_004", "B19001_005") ,
+                       geometry = T, # merge estimates to Census geographies
+                       output = "wide")
+
+head(la_acs_orig)
+
+
+la_tracts_2013 <- la_acs_orig %>%
+  mutate(medhinc_tract = B19013_001E) %>% 
+  mutate(medhinc_county = 55909) %>%
+  mutate(total_pop = B01003_001E) %>% 
+  mutate(median_age = B01002_001E) %>% 
+  mutate(median_rent = B25058_001E) %>% 
+  mutate(high_inc_mobility = round(((B07010_009E + B07010_010E + B07010_011E) / B07010_001E), digits = 2)) %>%
+  mutate(high_education = round(((B15003_022E + B15003_023E + B15003_024E + B15003_025E) / B15003_001E), digits = 2)) %>%
+  mutate(unemployment_rate = round((B23025_005E / B23025_003E), digits = 2)) %>% 
+  mutate(low_inc_hh = round(((B19001_002E + B19001_003E + B19001_004E + B19001_005E) / B19001_001E), digits = 2)) %>% 
+  mutate(medhinc_ratio_tract = round((medhinc_tract / medhinc_county), digits = 2)) %>%
+  mutate(income_quintiles = cut(medhinc_ratio_tract, breaks = quantile(medhinc_ratio_tract, probs = seq(0, 1, by = 1/5), na.rm = TRUE), labels = c(1, 2, 3, 4, 5), include.lowest = TRUE)) %>% 
+  mutate(income_quintiles = as.factor(income_quintiles))
+
+
+la_tracts_2013 <- la_tracts_2013 %>% 
+  select(GEOID, NAME, geometry, medhinc_tract, medhinc_county, medhinc_ratio_tract, income_quintiles,
+         high_inc_mobility, high_education, unemployment_rate, low_inc_hh, total_pop, median_age, median_rent) %>% 
+  filter(complete.cases(medhinc_tract, medhinc_county, medhinc_ratio_tract, income_quintiles,
+                        high_inc_mobility, high_education, unemployment_rate, low_inc_hh, total_pop, median_age, median_rent))
+
+
+```
+
+## Data wrangling and recoding regarding study area
+
+```{r Study area}
+
+# Shapefile of LA census tracts
+
+la_tracts_2013 <- st_as_sf(la_tracts_2013, coords = c("geometry"), crs = 26945)
+
+la_tracts_2013 <-  st_transform(la_tracts_2013, crs = 26945)
+
+st_write(la_tracts_2013, here("data/census tracts/outputs/la_tracts_2013.shp"), delete_layer=TRUE)
+
+
+la_tracts_2013 <- st_read(here("data/census tracts/outputs/la_tracts_2013.shp"))
+
+la_tracts_2013 <- la_tracts_2013 %>% 
+  select(GEOID, NAME, geometry, medhinc_tract = mdhnc_t, medhinc_county = mdhnc_c,
+         medhinc_ratio_tract = mdhnc__, income_quintiles = incm_qn, high_inc_mobility = hgh_nc_,
+         high_education = hgh_dct, unemployment_rate = unmply_, low_inc_hh = lw_nc_h,
+         total_pop = totl_pp, median_age = medin_g, median_rent = mdn_rnt)
+
+ggplot() +
+  geom_sf(data = la_tracts_2013)
+
+st_crs(la_tracts_2013)
+
+ggplot() +
+  geom_sf(data = la_tracts_2013, fill = "khaki")
+
+
+# Metro stations
+
+file_paths <- c(
+  here("data/census tracts/inputs/shapefiles/metro/230711_All_E-Line_Stations_Post_RC/230711_All_E-Line_Stations_Post_RC.shp"),
+  here("data/census tracts/inputs/shapefiles/metro/230711_All_A-Line_Stations_Post_RC/230711_All_A-Line_Stations_Post_RC.shp"),
+  here("data/census tracts/inputs/shapefiles/metro/802_805_RedPurple_Stations_0316/RedPurpleLine0316.shp"),
+  here("data/census tracts/inputs/shapefiles/metro/803_Green_Stations_0316/GreenLine0316.shp"),
+  here("data/census tracts/inputs/shapefiles/metro/230711_All_K-Line_Stations/230711_All_K-Line_Stations.shp")
+)
+
+station_names <- c("e_line_stations", "a_line_stations", "b_d_line_stations", "c_line_stations", "k_line_stations")
+
+named_stations <- map2(file_paths, station_names, ~{
+  station <- st_read(.x) %>%
+    st_transform(crs = 26945)
+  
+  crs_before <- st_crs(station)
+  cat("Before transformation:", crs_before$name, "\n")
+  
+  assign(.y, station, envir = .GlobalEnv)
+  
+  return(station)
+})
+
+
+ggplot() +
+  geom_sf(data = la_tracts_2013, fill = "burlywood3") +
+  geom_sf(data = e_line_stations, fill = "darkorange") +
+  geom_sf(data = a_line_stations, fill = "lightblue") +
+  geom_sf(data = b_d_line_stations, fill = "purple") +
+  geom_sf(data = c_line_stations, fill = "springgreen") +
+  geom_sf(data = k_line_stations, fill = "lightcoral")
+
+
+
+# Adjust E-Metro-Line based on new stations
+
+new_stations <- e_line_stations %>% 
+  filter(STOP_ID %in% (80123:80132))
+
+
+```
+
+## Classification of observations according to treatment and control group
+
+```{r Classification into treatment and control groups}
+
+# Centroids of census tracts
+
+la_tracts_centroids <- st_centroid(la_tracts_2013)
+
+la_tracts_centroids <- st_transform(la_tracts_centroids, crs = 26945)
+
+ggplot() + 
+  geom_sf(data = la_tracts_centroids)
+
+
+# Distance between centroids of census tracts and CBD (Central business district) of LA
+
+la_cbd <-st_read(here("data/census tracts/inputs/shapefiles/la_cbd/Los_angeles_CBD.shp"))
+
+st_crs(la_cbd)
+
+la_cbd <- st_transform(la_cbd, crs = 26945)
+
+
+distance_centroid_cbd <- st_distance(la_tracts_centroids, la_cbd)
+
+distance_centroid_cbd <- as.data.frame(distance_centroid_cbd)
+
+
+la_tracts_2013 <- cbind(la_tracts_2013, distance_centroid_cbd)
+
+la_tracts_centroids <- cbind(la_tracts_centroids, distance_centroid_cbd)
+
+
+# Centroids of census tracts within buffers
+
+new_e_stations_buffer <- st_buffer(new_stations, dist = 800)
+
+e_stations_buffer <- st_buffer(e_line_stations, dist = 800)
+
+a_stations_buffer <- st_buffer(a_line_stations, dist = 800)
+
+b_d_stations_buffer <- st_buffer(b_d_line_stations, dist = 800)
+
+c_stations_buffer <- st_buffer(c_line_stations, dist = 800)
+
+
+ggplot() + 
+  geom_sf(data = new_e_stations_buffer)
+
+ggplot() + 
+  geom_sf(data = a_stations_buffer)
+
+ggplot() + 
+  geom_sf(data = b_d_stations_buffer)
+
+ggplot() + 
+  geom_sf(data = c_stations_buffer)
+
+
+ggplot() +
+  geom_sf(data = la_tracts_2013, fill = "khaki") +
+  geom_sf(data = new_e_stations_buffer, fill = "blue") +
+  geom_sf(data = la_tracts_centroids, fill = NA, color = "black", alpha = 0.05)
+
+
+buffer_centroids_intersect_new_e <- new_e_stations_buffer %>%
+  st_join(., la_tracts_centroids, join = st_intersects) %>% 
+  mutate(metro_line = "e_line")
+
+buffer_centroids_intersect_e <- e_stations_buffer %>%
+  st_join(., la_tracts_centroids, join = st_intersects) %>% 
+  mutate(metro_line = "e_line")
+
+buffer_centroids_intersect_a <- a_stations_buffer %>%
+  st_join(., la_tracts_centroids, join = st_intersects) %>% 
+  mutate(metro_line = "a_line")
+
+buffer_centroids_intersect_b_d <- b_d_stations_buffer %>%
+  st_join(., la_tracts_centroids, join = st_intersects) %>% 
+  mutate(metro_line = "b_d_line")
+
+buffer_centroids_intersect_c <- c_stations_buffer %>%
+  st_join(., la_tracts_centroids, join = st_intersects) %>% 
+  mutate(metro_line = "c_line")
+
+
+
+# census tracts which are in the radius of new E-Line stations but not in buffer of the other metro lines
+
+dfs_treated <- list(buffer_centroids_intersect_new_e, buffer_centroids_intersect_a, buffer_centroids_intersect_b_d, buffer_centroids_intersect_c)
+
+combined_buffers_centroids_treated <- bind_rows(dfs_treated, .id = "source")
+
+unique_observations_treated <- combined_buffers_centroids_treated %>%
+  group_by(NAME) %>%
+  filter(n() == 1) %>%
+  ungroup()
+
+treated_la_tracts <- unique_observations_treated %>% 
+  filter(metro_line == "e_line") %>% 
+  filter(income_quintiles == 1 | income_quintiles == 2)
+
+
+
+# census tracts which are not in the radius of any metro stations
+
+dfs_control <-  list(la_tracts_2013, buffer_centroids_intersect_e, buffer_centroids_intersect_a, buffer_centroids_intersect_b_d, buffer_centroids_intersect_c)
+
+dfs_control_reprojected <- lapply(dfs_control, function(x) st_transform(x, crs = 26945))
+
+dfs_control_with_crs <- lapply(dfs_control_reprojected, function(x) {
+  if (is.na(st_crs(x))) st_crs(x) <- 26945
+  return(x)
+})
+
+combined_buffers_centroids_control <- bind_rows(dfs_control, .id = "source")
+
+unique_observations_control <- combined_buffers_centroids_control %>%
+  group_by(NAME) %>%
+  filter(n() == 1) %>%
+  ungroup()
+
+control_la_tracts <- unique_observations_control %>%
+  filter(income_quintiles == 1 | income_quintiles == 2)
+
+```
+
+## Data frames for treated and control units
+
+```{r Data frames for treatment and control group}
+
+treated_units <- la_tracts_2013 %>%
+  filter(NAME %in% treated_la_tracts$NAME)
+
+control_units <- la_tracts_2013 %>% 
+  filter(NAME %in% control_la_tracts$NAME)
+
+
+treated_units <- st_as_sf(treated_units, coords = c("geometry"), crs = 26945)
+
+control_units <- st_as_sf(control_units, coords = c("geometry"), crs = 26945)
+
+st_write(treated_units, here("data/census tracts/outputs/treated_units.shp"), delete_layer=TRUE)
+
+st_write(control_units, here("data/census tracts/outputs/control_units.shp"), delete_layer=TRUE)
+
+```

@@ -1,0 +1,197 @@
+---
+title: "Post-Treatment Data Wrangling - Block Groups"
+author: "Kevin Okonkwo"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Libraries
+
+```{r Libraries}
+
+library(tidycensus)
+library(tidyverse)
+library(tmap)
+library(sf)
+library(here)
+library(MatchIt)
+library(optmatch)
+library(cobalt)
+library(readr)
+library(modelsummary)
+library(broom)
+library(dplyr)
+library(rmarkdown)
+
+here()
+
+```
+
+## Download of ACS-5-Year-2017 detailed variables for Los Angeles County, CA Block Groups (Post-Treatment)
+
+```{r Variable download 1}
+
+la_acs_orig_2017 <- get_acs(geography = "block group", # level of geography requested
+                       state ="006", # can use state FIPS codes as well e.g. 48
+                       county = "037", # County FIPS codes are safer
+                       year = 2017,
+                       variables = c("B19013_001", # median household income
+                                     "B01003_001", # total population
+                                     "B01002_001", # median age by sex
+                                     "B25058_001", # median contract rent
+                                     "B23025_003", "B23025_005", # share of unemployed people
+                                     "B07010_001", "B07010_009", "B07010_010", "B07010_011", # share of geographical higher-income mobility
+                                     "B15003_001", "B15003_022", "B15003_023", "B15003_024", "B15003_025", # share of people with higher education
+                                     "B19001_001" , "B19001_002", "B19001_003", "B19001_004", "B19001_005") , # share of lower-income households
+                       geometry = T, # merge estimates to Census geographies
+                       output = "wide")
+
+head(la_acs_orig_2017)
+
+
+la_blocks_2017 <- la_acs_orig_2017 %>% 
+  mutate(medhinc_block = B19013_001E) %>% 
+  mutate(medhinc_county = 61015) %>%
+  mutate(total_pop = B01003_001E) %>% 
+  mutate(median_age = B01002_001E) %>% 
+  mutate(median_rent = B25058_001E) %>% 
+  mutate(high_inc_mobility = round(((B07010_009E + B07010_010E + B07010_011E) / B07010_001E), digits = 2)) %>%
+  mutate(unemployment_rate = round((B23025_005E / B23025_003E), digits = 2)) %>% 
+  mutate(low_inc_hh = round(((B19001_002E + B19001_003E + B19001_004E + B19001_005E) / B19001_001E), digits = 2)) %>% 
+  mutate(medhinc_ratio_block = round((medhinc_block / medhinc_county), digits = 2)) %>%
+  mutate(income_quintiles = cut(medhinc_ratio_block, breaks = quantile(medhinc_ratio_block, probs = seq(0, 1, by = 1/5), na.rm = TRUE), labels = c(1, 2, 3, 4, 5), include.lowest = TRUE)) %>% 
+  mutate(income_quintiles = as.factor(income_quintiles))
+
+
+la_blocks_2017_df <- la_blocks_2017 %>% 
+  select(GEOID, NAME, geometry, medhinc_block, medhinc_county, medhinc_ratio_block, income_quintiles,
+         unemployment_rate, low_inc_hh, total_pop, median_age, median_rent) %>% 
+  filter(complete.cases(medhinc_block, medhinc_county, medhinc_ratio_block, income_quintiles,
+                        unemployment_rate, low_inc_hh, total_pop, median_age, median_rent))
+
+
+la_blocks_2017 <- st_transform(la_blocks_2017, crs = 26945)
+
+```
+
+## Extract from ACS-5-Year-2022 detailed variables for Los Angeles County, CA Block Groups (Post-Treatment)
+
+```{r Variable download 2}
+
+la_acs_orig_2022 <- get_acs(geography = "block group", # level of geography requested
+                            state ="006", # can use state FIPS codes as well e.g. 48
+                            county = "037", # County FIPS codes are safer
+                            year = 2022,
+                            variables = c("B19013_001", # median household income
+                                          "B01003_001", # total population
+                                          "B01002_001", # median age by sex
+                                          "B25058_001", # median contract rent
+                                          "B23025_003", "B23025_005", # share of unemployed people
+                                          "B07010_001", "B07010_009", "B07010_010", "B07010_011", # share of geographical higher-income mobility
+                                          "B15003_001", "B15003_022", "B15003_023", "B15003_024", "B15003_025", # share of people with higher education
+                                          "B19001_001" , "B19001_002", "B19001_003", "B19001_004", "B19001_005") , # share of lower-income households
+                            geometry = T, # merge estimates to Census geographies
+                            output = "wide")
+
+head(la_acs_orig_2022)
+
+
+la_blocks_2022 <- la_acs_orig_2022 %>% 
+  mutate(medhinc_block = B19013_001E) %>% 
+  mutate(medhinc_county = 83411) %>%
+  mutate(total_pop = B01003_001E) %>% 
+  mutate(median_age = B01002_001E) %>% 
+  mutate(median_rent = B25058_001E) %>% 
+  mutate(high_inc_mobility = round(((B07010_009E + B07010_010E + B07010_011E) / B07010_001E), digits = 2)) %>%
+  mutate(unemployment_rate = round((B23025_005E / B23025_003E), digits = 2)) %>% 
+  mutate(low_inc_hh = round(((B19001_002E + B19001_003E + B19001_004E + B19001_005E) / B19001_001E), digits = 2)) %>% 
+  mutate(medhinc_ratio_block = round((medhinc_block / medhinc_county), digits = 2)) %>%
+  mutate(income_quintiles = cut(medhinc_ratio_block, breaks = quantile(medhinc_ratio_block, probs = seq(0, 1, by = 1/5), na.rm = TRUE), labels = c(1, 2, 3, 4, 5), include.lowest = TRUE)) %>% 
+  mutate(income_quintiles = as.factor(income_quintiles))
+
+
+la_blocks_2022 <- la_blocks_2022 %>% 
+  select(GEOID, NAME, geometry, medhinc_block, medhinc_county, medhinc_ratio_block, income_quintiles,
+         unemployment_rate, low_inc_hh, total_pop, median_age, median_rent) %>% 
+  filter(complete.cases(medhinc_block, medhinc_county, medhinc_ratio_block, income_quintiles,
+                        unemployment_rate, low_inc_hh, total_pop, median_age, median_rent))
+
+
+la_blocks_2022 <- st_transform(la_blocks_2022, crs = 26945)
+
+```
+
+## Merge yearly data frames to one final one
+
+```{r Merging of data frames}
+
+matched_data_2013 <- st_read(here("data/block groups/outputs/matched_data_2013.shp"))
+
+
+matched_data_2013 <- matched_data_2013 %>% 
+  select(GEOID, NAME, geometry, year, treatment, distance, weights, subclass,
+         medhinc_block = mdhnc_b, medhinc_county = mdhnc_c, medhinc_ratio_block = mdhnc__,
+         income_quintiles = incm_qn, unemployment_rate = unmply_, low_inc_hh = lw_nc_h,
+         total_pop = totl_pp, median_age = medin_g, median_rent = mdn_rnt, distance_centroid_cbd = dstnc__)
+
+
+matching_info_2013 <- matched_data_2013 %>% 
+  select(GEOID, geometry, distance_centroid_cbd, treatment, distance, weights, subclass)
+
+
+matching_info_2017 <- la_blocks_2017 %>% 
+  filter(GEOID %in% matched_data_2013$GEOID) %>%
+  mutate(year = 2017) %>% 
+  select(GEOID, NAME, geometry, medhinc_block, medhinc_county, medhinc_ratio_block, income_quintiles,
+         unemployment_rate, low_inc_hh, total_pop, median_age, median_rent, year)
+  
+matching_info_2017 <- left_join(matching_info_2017, matching_info_2013 %>% as.data.frame() %>% select(-geometry), by = "GEOID")
+
+
+matching_info_2022 <- la_blocks_2022 %>% 
+  filter(GEOID %in% matched_data_2013$GEOID) %>%
+  mutate(year = 2022) %>% 
+  select(GEOID, NAME, geometry, medhinc_block, medhinc_county, medhinc_ratio_block, income_quintiles,
+         unemployment_rate, low_inc_hh, total_pop, median_age, median_rent, year)
+
+matching_info_2022 <- left_join(matching_info_2022, matching_info_2013 %>% as.data.frame() %>% select(-geometry), by = "GEOID")
+
+
+
+appended_df <- rbind(matched_data_2013, matching_info_2017, matching_info_2022)
+
+appended_df <- appended_df %>%
+  mutate(after_2013 = ifelse(year > 2013, 1, 0))
+
+
+appended_df_2013_2017 <- rbind(matched_data_2013, matching_info_2017)
+
+appended_df_2013_2017 <- appended_df_2013_2017 %>%
+  mutate(after_2013 = ifelse(year > 2013, 1, 0))
+
+
+appended_df_2017_2022 <- rbind(matching_info_2017, matching_info_2022)
+
+appended_df_2017_2022 <- appended_df_2017_2022 %>%
+  mutate(after_2017 = ifelse(year > 2017, 1, 0))
+
+```
+
+## Data frames of pre-treatment and post-treatment period
+
+```{r Data frames}
+
+appended_df <- st_as_sf(appended_df, coords = c("geometry"), crs = 26945)
+
+appended_df_2013_2017 <- st_as_sf(appended_df_2013_2017, coords = c("geometry"), crs = 26945)
+
+appended_df_2017_2022 <- st_as_sf(appended_df_2017_2022, coords = c("geometry"), crs = 26945)
+
+st_write(appended_df, here("data/block groups/outputs/appended_df.shp"), delete_layer=TRUE)
+
+st_write(appended_df_2013_2017, here("data/block groups/outputs/appended_df_2013_2017.shp"), delete_layer=TRUE)
+
+st_write(appended_df_2017_2022, here("data/block groups/outputs/appended_df_2017_2022.shp"), delete_layer=TRUE)
+
+```
+
