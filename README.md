@@ -60,4 +60,4 @@ If you use or refer to this project, please cite as follows:
 
 > Okonkwo, Kevin (2025). *Beyond the Metro Map: Exploring the Socio-Economic Consequences of Public Transport Expansion: A long-term analysis of the E-Line expansion in Los Angeles from 2009 to 2022*. Bachelor’s Thesis, Humboldt University of Berlin, Department of Social Sciences.
 
-For questions or collaboration, feel free to contact: kevin.okonkwo[at]example.com
+For questions or collaboration, feel free to contact: kevin.ikenna.okonkwo@gmail.com
