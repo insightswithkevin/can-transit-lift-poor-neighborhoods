@@ -1,12 +1,3 @@
-geo_name,year,employment_estimate
-us_2002,2002,-0.3
-us_2003,2003,0.5
-us_2004,2004,1.8
-us_2005,2005,2.1
-us_2006,2006,2.0
-us_2007,2007,2.1
-us_2008,2008,-0.2
-us_2009,2009,-3.1
-us_2010,2010,-0.4
-us_2011,2011,1.8
-us_2012,2012,1.6
+version https://git-lfs.github.com/spec/v1
+oid sha256:0bda166640badf1404a6816417abd54c7a1a7e28b2081c3ed37bb13d2b90639b
+size 237
