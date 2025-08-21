@@ -3,7 +3,7 @@
 
 ## 📌 Overview
 
-This project investigates the **socioeconomic effects** of the **E Line (Expo Line) expansion** on **low-income neighborhoods in Los Angeles County**. Combining **Difference-in-Differences (DiD)** with **Propensity Score Matching (PSM)**, it explores whether improved transit access leads to measurable improvements in neighborhood-level economic outcomes.
+My bachelor thesis investigates the **socioeconomic effects** of the **E Line (Expo Line) expansion** on **low-income neighborhoods in Los Angeles County**. Combining **Difference-in-Differences (DiD)** with **Propensity Score Matching (PSM)**, it explores whether improved transit access leads to measurable improvements in neighborhood-level economic outcomes.
 
 ## 🧠 Motivation
 
